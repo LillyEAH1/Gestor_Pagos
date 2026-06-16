@@ -1,16 +1,19 @@
 # Render Blueprint — backend GestorPagosMarcovich
+# Render lo detecta automáticamente al conectar el repo (Blueprint).
 # https://render.com/docs/blueprint-spec
 services:
   - type: web
     name: gestorpagos-api
     runtime: python
     rootDir: backend
+    plan: free
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
     envVars:
       - key: GROQ_API_KEY
-        sync: false
+        sync: false        # se captura en el dashboard (secreto)
       - key: DATABASE_URL
-        sync: false
+        sync: false        # connection string de Supabase (secreto)
       - key: CORS_ORIGINS
-        sync: false
+        sync: false        # URL del frontend en Vercel (se pone tras desplegar Vercel)
