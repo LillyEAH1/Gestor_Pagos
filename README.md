@@ -24,11 +24,15 @@ recordatorios de calendario.
 | Fase | Estado | Descripción |
 |------|--------|-------------|
 | 0 — Fundación        | ✅ | git, `.gitignore`, secretos en `.env`, estructura |
-| 1 — Supabase         | ⬜ | Esquema Postgres (6 tablas) + migración del seed |
-| 2 — Backend FastAPI  | ⬜ | Port de la lógica a API REST + auth → Render |
-| 3 — Frontend React   | ⬜ | 4 secciones, upload de recibo, preview PDF → Vercel |
+| 1 — Supabase         | 🟡 | Esquema Postgres listo (`backend/migrations/001_schema.sql`); falta correr el seed en Supabase |
+| 2 — Backend FastAPI  | 🟡 | API completa y probada en local; falta **auth** + deploy en Render |
+| 3 — Frontend React   | ✅ | 4 secciones, upload + OCR, preview PDF; falta deploy en Vercel |
 | 4 — Outlook → Graph  | ⬜ | Recordatorios vía Microsoft Graph API |
 | 5 — Bugs + pulido    | ⬜ | OCR incompleto y demás fallos, uno por uno |
+
+> **Pendiente de cuentas del usuario:** Supabase (BD), Render (backend), Vercel
+> (frontend), Azure (Graph). El código corre completo en local sin ellas
+> (los módulos de BD muestran avisos hasta que exista `DATABASE_URL`).
 
 ## Variables de entorno
 
