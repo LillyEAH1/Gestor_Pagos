@@ -1,12 +1,12 @@
 import { useState, useEffect, useRef } from "react";
 import { api } from "../api";
-import { loadFirmantes, MESES } from "../store";
+import { loadFirmantes, saveFirmantes, MESES } from "../store";
 
 const FORM_VACIO = {
   empresa: "", sucursal: "", centro_costos: "", direccion: "",
   proveedor_nombre: "", motivo_pago: "", folio_cfdi: "", notas_credito: "",
-  monto_total: "", importe_letra: "", banco: "", clabe: "", no_cuenta: "",
-  forma_pago: "TRANSFERENCIA", observaciones: "", mes_presupuesto: "", mes_pago: "",
+  monto_total: "", banco: "", clabe: "", no_cuenta: "",
+  observaciones: "", mes_presupuesto: "", mes_pago: "", anio: new Date().getFullYear(),
 };
 
 const MAP_OCR = {
@@ -17,15 +17,17 @@ const MAP_OCR = {
 };
 
 export default function NuevaSolicitud({ health }) {
-  const [tipoDoc, setTipoDoc] = useState("recibo");
+  const [tipoDoc, setTipoDoc] = useState("recibo");      // recibo | factura
+  const [modo, setModo] = useState(null);                // null | ocr | manual
   const [file, setFile] = useState(null);
   const [scanning, setScanning] = useState(false);
   const [form, setForm] = useState(FORM_VACIO);
+  const [firm, setFirm] = useState(loadFirmantes);
   const [cat, setCat] = useState({ empresas: [], proveedores: [], bancos: [] });
   const [msg, setMsg] = useState(null);
   const [debug, setDebug] = useState("");
   const [pdfUrl, setPdfUrl] = useState("");
-  const [busyPdf, setBusyPdf] = useState(false);
+  const [busy, setBusy] = useState(false);
   const fileRef = useRef();
 
   useEffect(() => {
@@ -36,6 +38,8 @@ export default function NuevaSolicitud({ health }) {
   }, [health]);
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+  const setF = (k, v) => setFirm((f) => ({ ...f, [k]: v }));
+  const bloqueado = modo === null;
 
   async function escanear() {
     if (!file) { setMsg({ t: "warn", m: "Selecciona un archivo PDF o imagen primero." }); return; }
@@ -43,67 +47,62 @@ export default function NuevaSolicitud({ health }) {
     try {
       const r = await api.escanear(file, tipoDoc);
       const next = { ...form };
-      for (const [src, dst] of Object.entries(MAP_OCR)) {
-        if (r[src]) next[dst] = r[src];
-      }
+      for (const [src, dst] of Object.entries(MAP_OCR)) if (r[src]) next[dst] = r[src];
       setForm(next);
       setDebug(r.debug_log || "");
       setMsg(r.error
         ? { t: "warn", m: "Lectura parcial: " + r.error + ". Revisa y completa los campos." }
-        : { t: "ok", m: "Recibo escaneado. Revisa los campos antes de generar el PDF." });
+        : { t: "ok", m: "Recibo escaneado. Revisa los campos antes de generar la solicitud." });
     } catch (e) {
       setMsg({ t: "err", m: "Error al escanear: " + e.message });
-    } finally {
-      setScanning(false);
-    }
+    } finally { setScanning(false); }
   }
 
-  async function calcularLetra() {
-    const monto = parseFloat(String(form.monto_total).replace(/,/g, ""));
-    if (!monto) return;
-    try { const r = await api.numeroLetra(monto); set("importe_letra", r.letra); } catch {}
+  function datosPDF() {
+    saveFirmantes(firm);
+    return { ...form, ...firm, fecha_proceso: new Date().toLocaleDateString("es-MX") };
   }
 
-  async function generarPdf() {
-    setBusyPdf(true); setMsg(null);
+  async function vistaPrevia() {
+    setBusy(true); setMsg(null);
     try {
-      const datos = {
-        ...form,
-        ...loadFirmantes(),
-        fecha_proceso: new Date().toLocaleDateString("es-MX"),
-      };
-      const blob = await api.generarPdf(datos);
+      const blob = await api.generarPdf(datosPDF());
       if (pdfUrl) URL.revokeObjectURL(pdfUrl);
       setPdfUrl(URL.createObjectURL(blob));
-      setMsg({ t: "ok", m: "PDF generado. Vista previa abajo." });
-    } catch (e) {
-      setMsg({ t: "err", m: "Error generando PDF: " + e.message });
-    } finally {
-      setBusyPdf(false);
-    }
+      setMsg({ t: "ok", m: "Vista previa generada abajo." });
+    } catch (e) { setMsg({ t: "err", m: "Error generando PDF: " + e.message }); }
+    finally { setBusy(false); }
   }
 
-  async function guardar() {
+  async function generarSolicitud() {
+    setBusy(true); setMsg(null);
     try {
-      const monto = parseFloat(String(form.monto_total).replace(/,/g, "")) || 0;
-      const payload = {
-        ...form,
-        monto_total: monto,
-        notas_credito: parseFloat(String(form.notas_credito).replace(/,/g, "")) || 0,
-        mes: MESES.indexOf(form.mes_pago) || null,
-        anio: new Date().getFullYear(),
-        fecha_proceso: new Date().toISOString().slice(0, 10),
-        ...loadFirmantes(),
-      };
-      const r = await api.crearPago(payload);
-      setMsg({ t: "ok", m: `Guardado en historial (#${r.id}).` });
-    } catch (e) {
-      setMsg({ t: "err", m: "No se pudo guardar: " + e.message });
-    }
+      const blob = await api.generarPdf(datosPDF());
+      if (pdfUrl) URL.revokeObjectURL(pdfUrl);
+      const url = URL.createObjectURL(blob);
+      setPdfUrl(url);
+      // Guardar en historial si hay BD
+      if (health?.db_configurada) {
+        const monto = parseFloat(String(form.monto_total).replace(/,/g, "")) || 0;
+        await api.crearPago({
+          ...form, ...firm, monto_total: monto,
+          notas_credito: parseFloat(String(form.notas_credito).replace(/,/g, "")) || 0,
+          mes: MESES.indexOf(form.mes_pago) || null,
+          anio: parseInt(form.anio) || new Date().getFullYear(),
+          fecha_proceso: new Date().toISOString().slice(0, 10),
+        });
+        setMsg({ t: "ok", m: "Solicitud generada y guardada en el historial." });
+      } else {
+        setMsg({ t: "ok", m: "Solicitud generada (sin guardar: BD no configurada)." });
+      }
+      const a = document.createElement("a");
+      a.href = url; a.download = "Solicitud.pdf"; a.click();
+    } catch (e) { setMsg({ t: "err", m: "Error: " + e.message }); }
+    finally { setBusy(false); }
   }
 
-  function limpiar() {
-    setForm(FORM_VACIO); setFile(null); setDebug(""); setMsg(null);
+  function nuevaSolicitud() {
+    setForm(FORM_VACIO); setFile(null); setDebug(""); setMsg(null); setModo(null);
     if (pdfUrl) { URL.revokeObjectURL(pdfUrl); setPdfUrl(""); }
     if (fileRef.current) fileRef.current.value = "";
   }
@@ -115,114 +114,150 @@ export default function NuevaSolicitud({ health }) {
 
   return (
     <>
-      <h1 className="page-title">Nueva Solicitud de Pago</h1>
-      <p className="page-sub">Escanea un recibo o factura, revisa los datos y genera el PDF oficial.</p>
+      <h1 className="page-title">Nueva solicitud de pago</h1>
 
-      <div className="card">
-        <h3>1 · Escanear documento</h3>
-        <div className="seg" style={{ marginBottom: 14 }}>
-          {[["recibo", "Recibo"], ["telmex", "Recibo Telmex"], ["factura", "Factura CFDI"]].map(([v, l]) => (
-            <button key={v} className={tipoDoc === v ? "active" : ""} onClick={() => setTipoDoc(v)}>{l}</button>
-          ))}
+      {/* Tipo de documento + modo */}
+      <div className="card flat">
+        <div className="radio-row">
+          <strong style={{ marginRight: 4 }}>Tipo de documento:</strong>
+          <label><input type="radio" name="tipo" checked={tipoDoc === "recibo"} onChange={() => setTipoDoc("recibo")} /> Recibo de servicio</label>
+          <label><input type="radio" name="tipo" checked={tipoDoc === "factura"} onChange={() => setTipoDoc("factura")} /> Factura CFDI</label>
         </div>
-        <div className="row" style={{ alignItems: "flex-end" }}>
-          <div className="field" style={{ flex: 2 }}>
-            <label>Archivo (PDF o imagen)</label>
-            <input ref={fileRef} type="file" accept=".pdf,.png,.jpg,.jpeg"
-              onChange={(e) => setFile(e.target.files[0])} />
-          </div>
-          <div className="field" style={{ flex: 0, minWidth: 160 }}>
-            <button className="btn" onClick={escanear} disabled={scanning}>
-              {scanning ? <><span className="spinner" /> Escaneando…</> : "Escanear"}
-            </button>
-          </div>
+
+        <p style={{ fontWeight: 600, margin: "16px 0 8px" }}>¿Cómo vas a llenar la solicitud?</p>
+        <div className="mode-row">
+          <button className={"btn" + (modo === "ocr" ? "" : " ghost")} onClick={() => setModo("ocr")}>
+            Subir recibo del proveedor (PDF/imagen)
+          </button>
+          <span className="muted">o</span>
+          <button className={"btn" + (modo === "manual" ? " dark" : " ghost")} onClick={() => setModo("manual")}>
+            Llenado manual
+          </button>
         </div>
-        {!health?.groq_configurada && (
-          <div className="alert warn">Groq OCR no está configurado en el servidor — el escaneo puede no funcionar.</div>
+
+        {modo === "ocr" && (
+          <div className="row" style={{ alignItems: "flex-end", marginTop: 14 }}>
+            <div className="field" style={{ flex: 2 }}>
+              <label>Archivo (PDF o imagen)</label>
+              <input ref={fileRef} type="file" accept=".pdf,.png,.jpg,.jpeg" onChange={(e) => setFile(e.target.files[0])} />
+            </div>
+            <div className="field" style={{ flex: 0, minWidth: 150 }}>
+              <button className="btn" onClick={escanear} disabled={scanning}>
+                {scanning ? <><span className="spinner" /> Escaneando…</> : "Escanear con OCR"}
+              </button>
+            </div>
+          </div>
+        )}
+        {modo === null && <div className="modo-hint">← Elige un modo para habilitar el formulario</div>}
+        {modo === "ocr" && !health?.groq_configurada && (
+          <div className="alert warn">Groq OCR no está configurado en el servidor.</div>
         )}
         {msg && <div className={"alert " + (msg.t === "ok" ? "ok" : msg.t === "warn" ? "warn" : "err")}>{msg.m}</div>}
         {debug && <details><summary className="muted" style={{ cursor: "pointer", fontSize: 12 }}>Ver log del OCR</summary>
           <pre style={{ fontSize: 11, whiteSpace: "pre-wrap", color: "#6b7280" }}>{debug}</pre></details>}
       </div>
 
-      <div className="card">
-        <h3>2 · Datos de la solicitud</h3>
-        <div className="row">
-          <Field l="Empresa" v={form.empresa} on={(v) => set("empresa", v)} list="l-emp" opts={empresasU} />
-          <Field l="Sucursal" v={form.sucursal} on={(v) => set("sucursal", v)} list="l-suc" opts={sucursalesU} />
-        </div>
-        <div className="row">
-          <Field l="Centro de costos" v={form.centro_costos} on={(v) => set("centro_costos", v)} />
-          <Field l="Dirección" v={form.direccion} on={(v) => set("direccion", v)} />
-        </div>
-        <div className="row">
-          <Field l="Beneficiario / Proveedor" v={form.proveedor_nombre} on={(v) => set("proveedor_nombre", v)} list="l-prov" opts={provsU} />
-          <Field l="Folio CFDI / Factura" v={form.folio_cfdi} on={(v) => set("folio_cfdi", v)} />
-        </div>
-        <div className="field">
-          <label>Motivo de pago</label>
-          <input value={form.motivo_pago} onChange={(e) => set("motivo_pago", e.target.value)} />
-        </div>
-        <div className="row">
-          <Field l="Monto total" v={form.monto_total} on={(v) => set("monto_total", v)} onBlur={calcularLetra} />
-          <Field l="Notas de crédito" v={form.notas_credito} on={(v) => set("notas_credito", v)} />
-        </div>
-        <div className="field">
-          <label>Importe en letra</label>
-          <div style={{ display: "flex", gap: 8 }}>
-            <input style={{ flex: 1 }} value={form.importe_letra} onChange={(e) => set("importe_letra", e.target.value)} />
-            <button className="btn ghost" type="button" onClick={calcularLetra}>Calcular</button>
+      <fieldset disabled={bloqueado} style={{ border: 0, padding: 0, margin: 0, opacity: bloqueado ? 0.55 : 1 }}>
+        <div className="card">
+          <h3>Datos de la empresa</h3>
+          <div className="row">
+            <Field l="Empresa" v={form.empresa} on={(v) => set("empresa", v)} list="l-emp" opts={empresasU} />
+            <Field l="Sucursal" v={form.sucursal} on={(v) => set("sucursal", v)} list="l-suc" opts={sucursalesU} />
+          </div>
+          <div className="row">
+            <Field l="Centro de costos" v={form.centro_costos} on={(v) => set("centro_costos", v)} />
+            <Field l="Dirección" v={form.direccion} on={(v) => set("direccion", v)} />
           </div>
         </div>
-        <div className="row">
-          <Field l="Banco" v={form.banco} on={(v) => set("banco", v)} list="l-bco" opts={bancosU} />
-          <Field l="CLABE" v={form.clabe} on={(v) => set("clabe", v)} />
-          <Field l="No. de cuenta" v={form.no_cuenta} on={(v) => set("no_cuenta", v)} />
-        </div>
-        <div className="field">
-          <label>Observaciones</label>
-          <textarea value={form.observaciones} onChange={(e) => set("observaciones", e.target.value)} />
-        </div>
-        <div className="row">
-          <SelectMes l="Mes del presupuesto" v={form.mes_presupuesto} on={(v) => set("mes_presupuesto", v)} />
-          <SelectMes l="Mes del pago" v={form.mes_pago} on={(v) => set("mes_pago", v)} />
+
+        <div className="card">
+          <h3>Beneficiario / Proveedor</h3>
+          <div className="row">
+            <Field l="Proveedor" v={form.proveedor_nombre} on={(v) => set("proveedor_nombre", v)} list="l-prov" opts={provsU} />
+            <Field l="Motivo de pago" v={form.motivo_pago} on={(v) => set("motivo_pago", v)} />
+          </div>
         </div>
 
-        <div className="btn-row">
-          <button className="btn" onClick={generarPdf} disabled={busyPdf}>
-            {busyPdf ? <><span className="spinner" /> Generando…</> : "Generar PDF"}
-          </button>
-          <button className="btn ghost" onClick={guardar} disabled={!health?.db_configurada}
-            title={health?.db_configurada ? "" : "Requiere base de datos configurada"}>
-            Guardar en historial
-          </button>
-          <button className="btn ghost" onClick={limpiar}>Limpiar</button>
+        <div className="card">
+          <h3>Datos de CFDI</h3>
+          <div className="row">
+            <Field l="No. Folio(s) CFDI / Folio Fiscal" v={form.folio_cfdi} on={(v) => set("folio_cfdi", v)} />
+            <Field l="Nota(s) de crédito" v={form.notas_credito} on={(v) => set("notas_credito", v)} />
+          </div>
         </div>
-      </div>
+
+        <div className="card">
+          <h3>Datos de pago</h3>
+          <div className="field" style={{ maxWidth: 260 }}>
+            <label>Importe total (MXN)</label>
+            <input value={form.monto_total} onChange={(e) => set("monto_total", e.target.value)} />
+          </div>
+          <div className="row">
+            <Field l="Banco" v={form.banco} on={(v) => set("banco", v)} list="l-bco" opts={bancosU} />
+            <Field l="CLABE" v={form.clabe} on={(v) => set("clabe", v)} />
+            <Field l="No. cuenta" v={form.no_cuenta} on={(v) => set("no_cuenta", v)} />
+          </div>
+          <div className="field">
+            <label>Observaciones / Referencia</label>
+            <textarea value={form.observaciones} onChange={(e) => set("observaciones", e.target.value)} />
+          </div>
+        </div>
+
+        <div className="card">
+          <h3>Exclusivo — Departamento de Finanzas</h3>
+          <div className="row">
+            <SelectMes l="Mes presupuesto" v={form.mes_presupuesto} on={(v) => set("mes_presupuesto", v)} />
+            <SelectMes l="Mes pago" v={form.mes_pago} on={(v) => set("mes_pago", v)} />
+            <Field l="Año" v={form.anio} on={(v) => set("anio", v)} />
+          </div>
+        </div>
+
+        <div className="card">
+          <h3>Nombres de firmantes</h3>
+          <div className="row">
+            <Field l="Solicitante / Analista" v={firm.analista_nombre} on={(v) => setF("analista_nombre", v)} />
+            <Field l="Gerente de Sistemas" v={firm.gerente_nombre} on={(v) => setF("gerente_nombre", v)} />
+          </div>
+          <div className="row">
+            <Field l="Vo. Bo. (Finanzas)" v={firm.visto_bno} on={(v) => setF("visto_bno", v)} />
+            <Field l="Depto. Finanzas Presupuesto" v={firm.depto_finanzas} on={(v) => setF("depto_finanzas", v)} />
+          </div>
+          <div className="row">
+            <Field l="Dirección Financiera" v={firm.dir_financiera} on={(v) => setF("dir_financiera", v)} />
+            <Field l="Dirección General" v={firm.dir_general} on={(v) => setF("dir_general", v)} />
+          </div>
+        </div>
+      </fieldset>
 
       <datalist id="l-emp">{empresasU.map((o) => <option key={o} value={o} />)}</datalist>
       <datalist id="l-suc">{sucursalesU.map((o) => <option key={o} value={o} />)}</datalist>
       <datalist id="l-prov">{provsU.map((o) => <option key={o} value={o} />)}</datalist>
       <datalist id="l-bco">{bancosU.map((o) => <option key={o} value={o} />)}</datalist>
 
+      {/* Barra de acciones */}
+      <div className="card flat actions">
+        <button className="btn dark" onClick={vistaPrevia} disabled={bloqueado || busy}>Vista previa (PDF)</button>
+        <button className="btn" onClick={generarSolicitud} disabled={bloqueado || busy}>
+          {busy ? <><span className="spinner" /> Generando…</> : "Generar Solicitud de Pago (PDF)"}
+        </button>
+        <button className="btn ghost" onClick={nuevaSolicitud}>Nueva solicitud</button>
+      </div>
+
       {pdfUrl && (
         <div className="card">
           <h3>Vista previa del PDF</h3>
           <iframe className="preview-frame" src={pdfUrl} title="PDF" />
-          <div className="btn-row">
-            <a className="btn" href={pdfUrl} download="Solicitud.pdf">Descargar PDF</a>
-          </div>
         </div>
       )}
     </>
   );
 }
 
-function Field({ l, v, on, onBlur, list, opts }) {
+function Field({ l, v, on, list, opts }) {
   return (
     <div className="field">
       <label>{l}</label>
-      <input value={v} list={list} onChange={(e) => on(e.target.value)} onBlur={onBlur} />
+      <input value={v} list={list} onChange={(e) => on(e.target.value)} />
       {list && opts && <datalist id={list}>{opts.map((o) => <option key={o} value={o} />)}</datalist>}
     </div>
   );
