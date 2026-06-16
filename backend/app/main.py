@@ -13,10 +13,15 @@ app = FastAPI(
     description="Backend de gestión de pagos IT: OCR, PDF de solicitud, historial.",
 )
 
+# CORS: si CORS_ORIGINS contiene "*" (o está vacío) se abre a cualquier origen
+# (sin credenciales, ya que aún no hay auth). Cuando se agregue login, fijar
+# CORS_ORIGINS a la URL exacta de Vercel y se usarán credenciales.
+_origins = settings.cors_origins_list
+_allow_all = (not _origins) or ("*" in _origins)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origins_list,
-    allow_credentials=True,
+    allow_origins=["*"] if _allow_all else _origins,
+    allow_credentials=not _allow_all,
     allow_methods=["*"],
     allow_headers=["*"],
 )
