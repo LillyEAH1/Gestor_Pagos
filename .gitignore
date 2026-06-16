@@ -1,0 +1,42 @@
+# ── Secrets ──────────────────────────────────────────────
+.env
+.env.local
+.env.*.local
+*.key
+
+# ── Python ───────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+
+# ── PyInstaller (app de escritorio legacy) ───────────────
+build/
+dist/
+*.spec
+
+# ── Bases de datos locales ───────────────────────────────
+*.db
+*.sqlite
+*.sqlite3
+
+# ── Node / Frontend ──────────────────────────────────────
+node_modules/
+.next/
+dist-frontend/
+.vercel/
+*.local
+
+# ── Render / build artifacts ─────────────────────────────
+.render/
+
+# ── Editor / OS ──────────────────────────────────────────
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store
+*.log

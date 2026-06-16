@@ -1,0 +1,9 @@
+customtkinter>=5.2.2
+openpyxl>=3.1.2
+reportlab>=4.1.0
+Pillow==10.4.0
+pypdf>=3.0.0
+pywin32>=306
+pyinstaller==5.13.2
+# Nota: Groq Vision usa urllib nativo de Python — no requiere instalación extra
+# Obtén tu API key gratuita en: https://console.groq.com
