@@ -224,6 +224,7 @@ def probar_groq_conexion(api_key: str) -> tuple[bool, str]:
                 "Authorization": f"Bearer {api_key}",
                 "Content-Type": "application/json",
                 "Accept": "application/json",
+                "User-Agent": "groq-python/0.11.0",
             },
         )
         with urllib.request.urlopen(req, timeout=15) as r:
@@ -306,6 +307,7 @@ def _groq_vision(img_bytes: bytes, mime: str, api_key: str,
                 "Authorization": f"Bearer {api_key}",
                 "Content-Type": "application/json",
                 "Accept": "application/json",
+                "User-Agent": "groq-python/0.11.0",
             },
         )
         with urllib.request.urlopen(req, timeout=45) as resp:
