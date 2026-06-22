@@ -2,6 +2,56 @@ import { useState, useEffect, useRef } from "react";
 import { api } from "../api";
 import { loadFirmantes, saveFirmantes, MESES } from "../store";
 
+const NOM_CORTO = {
+  "BH. BE HEALTHY COMERCIALIZADORA": "BH",
+  "BH SOLAR": "BH SOL",
+  "BLOOM & BLUSH": "B&B",
+  "COMERCIALIZADORA DE MARCAS JSB": "JSB",
+  "COMERCIALIZADORA ONLINE NH": "NH",
+  "ENFERMERAS UNIDAS PLUS": "EUP",
+  "GOLDEN YEARS MANAGEMENT": "GYM",
+  "MB COMERCIALIZADORA EN LINEA": "MB",
+  "MOSAIC CARE & HEALTH": "MH&C",
+  "SELECT SHOP MB": "SSMB",
+  "SM DISTRIBUIDORA DIGITAL": "SMD",
+  "INMOBILIARIA EISHEL": "EISH",
+  "ALEGARAT": "ALGT",
+  "ZONA ZELU": "ZZ",
+  "DONKERTECH": "DNKT",
+  "MW MED SUPPLY MEDICAL": "MW MED",
+};
+
+const MESES_ABREV = {
+  enero: "ENE", febrero: "FEB", marzo: "MAR", abril: "ABR",
+  mayo: "MAY", junio: "JUN", julio: "JUL", agosto: "AGO",
+  septiembre: "SEP", octubre: "OCT", noviembre: "NOV", diciembre: "DIC",
+};
+
+const SUFIJOS_LEGALES = /\s+(SAB\s+DE\s+CV|SAPI\s+DE\s+CV|SA\s+DE\s+CV|S\.A\.\s+DE\s+C\.V\.|SA\s+DE\s+C\.V\.)$/i;
+
+function nombrePdf(datos) {
+  const empresa = (datos.empresa || "").toUpperCase();
+  let nomCorto = "";
+  for (const [k, v] of Object.entries(NOM_CORTO)) {
+    if (empresa.includes(k.toUpperCase()) || k.toUpperCase().startsWith(empresa.slice(0, 10))) {
+      nomCorto = v; break;
+    }
+  }
+  if (!nomCorto) nomCorto = empresa.split(" ")[0] || "";
+
+  const prov = (datos.proveedor_nombre || "PAGO").toUpperCase().replace(SUFIJOS_LEGALES, "").trim();
+
+  const fecha = datos.fecha_proceso || new Date().toLocaleDateString("es-MX");
+  let fechaStr = "";
+  try { const [d, m, y] = fecha.split("/"); fechaStr = `${d}${m}${y.slice(-2)}`; }
+  catch { fechaStr = fecha.replace(/\//g, ""); }
+
+  const mesRaw = (datos.mes_pago || datos.mes_presupuesto || "").toLowerCase();
+  const mesAbrev = MESES_ABREV[mesRaw] || mesRaw.slice(0, 3).toUpperCase();
+
+  return ["Solicitud", nomCorto, prov, fechaStr, mesAbrev].filter(Boolean).join("_") + ".pdf";
+}
+
 const FORM_VACIO = {
   empresa: "", sucursal: "", centro_costos: "", direccion: "",
   proveedor_nombre: "", motivo_pago: "", folio_cfdi: "", notas_credito: "",
@@ -96,7 +146,7 @@ export default function NuevaSolicitud({ health }) {
         setMsg({ t: "ok", m: "Solicitud generada (sin guardar: BD no configurada)." });
       }
       const a = document.createElement("a");
-      a.href = url; a.download = "Solicitud.pdf"; a.click();
+      a.href = url; a.download = nombrePdf(datosPDF()); a.click();
     } catch (e) { setMsg({ t: "err", m: "Error: " + e.message }); }
     finally { setBusy(false); }
   }
