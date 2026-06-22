@@ -68,30 +68,31 @@ PREFIJO_BANCO = {
 GROQ_PROMPT_RECIBO = """Eres un asistente experto en leer RECIBOS de servicios mexicanos (Telmex, Totalplay, Telcel, Izzi, Bicentel, Digital Copy, etc.).
 REGLAS ABSOLUTAS — sin excepción:
 1. SOLO analiza la PRIMERA PÁGINA. Ignora publicidad y páginas adicionales.
-2. EMPRESA_CLIENTE: Lee ESTRICTAMENTE del encabezado del documento, sección "Nombre o Razón Social" o "Cliente". NO inventes ni mezcles nombres de otras empresas. Si dice "ENFERMERAS UNIDAS PLUS" pon exactamente eso. Si dice "MW MED SUPPLY" pon exactamente eso.
-3. SUCURSAL: Es la dirección del cliente en el recibo (ej: "Iztapalapa", "Nebraska 170", "Mariano Escobedo 476"). NO es la dirección del proveedor.
-4. FACTURA_NO: Extrae ÚNICAMENTE el número junto al texto "Factura No." (ej: 130126040074041). ESTRICTAMENTE PROHIBIDO usar el teléfono, número de cuenta o UUID/Folio Fiscal. Si no hay Factura No. visible, deja en blanco "".
-5. CLABE: Deja COMPLETAMENTE VACÍO "". No extraigas nada.
-6. OBSERVACIONES: Lee el bloque del código de barras al FINAL de la primera hoja. Extrae banco, DV y el número del código de barras. Formato: "BBVA DV 7 REFERENCIA 5556851480001349004". Si dice BANCOMER escribe BBVA.
-7. MES_PRESUPUESTO: Mes de facturación del recibo (ej: Abril).
-8. MES_PAGO: Mes siguiente al de facturación, o el mes actual si ya pasó (ej: Mayo).
-9. MOTIVO_PAGO: Construye "SERV CTA [teléfono/cuenta] [MES_PRESUPUESTO] [AÑO]". Usa el teléfono de la carátula, NO el código de barras.
-10. Compatibilidad: Funciona para Telmex, Totalplay, Telcel, Izzi, Bicentel y Digital Copy.
+2. EMPRESA_CLIENTE: Lee ESTRICTAMENTE del encabezado, sección "Nombre o Razón Social" o "Cliente". NO inventes ni mezcles nombres. Si dice "ENFERMERAS UNIDAS PLUS" pon exactamente eso.
+3. SUCURSAL: Es la dirección del cliente en el recibo (ej: "Iztapalapa", "Nebraska 170"). NO es la dirección del proveedor.
+4. FACTURA_NO: ÚNICAMENTE el número junto a "Factura No." PROHIBIDO usar teléfono, cuenta o UUID. Si no hay, deja "".
+5. OBSERVACIONES: Lee el bloque del código de barras al FINAL. Extrae banco, DV y número del código. Formato: "BBVA DV 7 REFERENCIA 5556851480001349004". Si dice BANCOMER escribe BBVA.
+6. MES_PRESUPUESTO: Mes de facturación del recibo (ej: Abril).
+7. MES_PAGO: Mes siguiente al de facturación (ej: Mayo).
+8. MOTIVO_PAGO: Construye "SERV CTA [teléfono/cuenta] [MES_PRESUPUESTO] [AÑO]". Usa el teléfono de la carátula, NO el del código de barras.
+9. NO_CUENTA (interno): teléfono o número de cuenta de la carátula. BANCO (interno): banco para depósito. DV (interno): dígito verificador. REFERENCIA_20_DIGITOS (interno): número de 20 dígitos del código de barras.
 
 FORMATO JSON — Devuelve SOLO este JSON válido, sin markdown ni texto extra:
 {
-  "empresa_cliente": "Empresa que paga (del encabezado del recibo, exacto)",
-  "sucursal": "Dirección o zona del cliente en el recibo",
+  "empresa_cliente": "Empresa que paga (del encabezado, exacto)",
+  "sucursal": "Dirección o zona del cliente",
   "proveedor": "Empresa que presta el servicio",
   "motivo_pago": "SERV CTA [telefono_10_digitos] [MES] [AÑO]",
-  "factura_no": "Solo el número de Factura No. corto. Si no hay, dejar vacío.",
+  "factura_no": "Número de Factura No. Si no hay, vacío.",
   "monto": "Total a pagar en decimal",
-  "banco": "Banco para depósito (BBVA, BANORTE, etc.)",
-  "clabe": "",
   "observaciones": "BBVA DV [n] REFERENCIA [codigo_barras_largo]",
   "mes_presupuesto": "Mes de facturación",
   "mes_pago": "Mes de pago",
-  "anio_factura": "Año"
+  "anio_factura": "Año",
+  "banco": "interno",
+  "no_cuenta": "interno",
+  "dv": "interno",
+  "referencia_20_digitos": "interno"
 }"""
 
 GROQ_PROMPT_TELMEX = """Eres un asistente de extracción de datos. Analiza este recibo de Telmex y devuelve ÚNICAMENTE un JSON válido, sin texto adicional ni markdown.
@@ -125,30 +126,30 @@ Ejemplo guía (mapeo campo por campo):
 }
 """
 
-GROQ_PROMPT_FACTURA = """Eres un asistente experto en leer FACTURAS (CFDIs) mexicanas de cualquier departamento.
+GROQ_PROMPT_FACTURA = """Eres un asistente experto en leer FACTURAS (CFDIs) mexicanas.
 REGLAS OBLIGATORIAS:
-1. SOLO analiza la PRIMERA PÁGINA.
-2. Extrae los 12 campos del JSON. Si un campo no existe pon "".
-3. EMPRESA CLIENTE: La empresa que RECIBE y PAGA. Busca en "Razón Social del receptor" o "CLIENTE".
-4. FACTURA_NO: El número de factura corto (ej: FA-000000000564109722). PROHIBIDO el UUID/Folio Fiscal.
-5. CLABE: Extrae la CLABE interbancaria si aparece en opciones de pago. Si no hay, deja vacío.
-6. BANCO: Busca en la sección de opciones de pago.
-7. MES: Extrae el mes de la fecha de emisión.
+1. SOLO analiza la PRIMERA PÁGINA. Si un campo no existe pon "".
+2. EMPRESA_CLIENTE: La empresa que RECIBE y PAGA. Busca en "Razón Social del receptor" o "CLIENTE".
+3. FACTURA_NO: El número de factura corto (ej: FA-000000000564109722). PROHIBIDO el UUID/Folio Fiscal.
+4. MOTIVO_PAGO: Descripción del concepto de la factura.
+5. OBSERVACIONES: Datos relevantes de pago (banco, CLABE, referencia si existen).
+6. MES_PRESUPUESTO: Mes de la fecha de emisión.
+7. MES_PAGO: Mes en que se realizará el pago.
 
 FORMATO JSON — Devuelve SOLO este JSON válido, sin markdown:
 {
   "empresa_cliente": "Empresa que paga",
-  "sucursal": "Dirección del cliente",
+  "sucursal": "Dirección o sede del cliente",
   "proveedor": "Empresa que emite la factura",
-  "motivo_pago": "Descripción del concepto de la factura",
+  "motivo_pago": "Descripción del concepto",
   "factura_no": "Número de factura corto. NO UUID.",
   "monto": "Total a pagar en decimal",
-  "banco": "Banco para depósito",
-  "clabe": "CLABE de 18 dígitos si existe, si no vacío",
-  "observaciones": "Datos de pago relevantes",
+  "observaciones": "Datos de pago: banco, CLABE, referencia si existen",
   "mes_presupuesto": "Mes de la factura",
   "mes_pago": "Mes de pago",
-  "anio_factura": "Año"
+  "anio_factura": "Año",
+  "banco": "interno",
+  "clabe": "interno"
 }"""
 
 
@@ -346,11 +347,16 @@ def _groq_vision(img_bytes: bytes, mime: str, api_key: str,
         return _vacio(), log
 
 
+OUTPUT_FIELDS = [
+    "empresa_cliente", "sucursal", "proveedor",
+    "motivo_pago", "factura_no", "monto",
+    "observaciones", "mes_presupuesto", "mes_pago", "anio_factura",
+]
+
+
 def _normalizar_groq(data: dict, texto_crudo: str = "") -> dict:
-    r = {k: "" for k in ["proveedor", "empresa_cliente", "sucursal", "no_cuenta",
-                         "factura_no", "monto", "banco", "clabe", "observaciones",
-                         "motivo_pago", "mes_factura", "anio_factura",
-                         "mes_presupuesto", "mes_pago", "fecha_limite"]}
+    # Campos internos de trabajo + campos de salida
+    r = {k: "" for k in OUTPUT_FIELDS + ["no_cuenta", "banco", "clabe", "mes_factura"]}
 
     prov_raw = str(data.get("proveedor") or "").upper()
     for kw, nom in PROVEEDORES_MAP.items():
@@ -509,7 +515,8 @@ def _normalizar_groq(data: dict, texto_crudo: str = "") -> dict:
         _pt = r.get("proveedor", "").upper()
         if "TELMEX" in _pt or "TELEFONOS" in _pt:
             r["motivo_pago"] = f"SERV CTA TELMEX {_mes_mp.upper()} {r['anio_factura']}".strip()
-    return r
+
+    return {k: r[k] for k in OUTPUT_FIELDS}
 
 
 def _extraer_campos_texto(texto: str) -> dict:
@@ -581,16 +588,11 @@ def _extraer_campos_texto(texto: str) -> dict:
     elif r["proveedor"]:
         r["motivo_pago"] = "SERV CTA TELMEX"
 
-    r["banco"] = "BBVA"
-    r["clabe"] = ""
-    return r
+    return {k: r.get(k, "") for k in OUTPUT_FIELDS}
 
 
 def _vacio(razon: str = "", log: list | None = None) -> dict:
-    r = {k: "" for k in ["proveedor", "empresa_cliente", "sucursal", "no_cuenta",
-                         "factura_no", "monto", "banco", "clabe", "observaciones",
-                         "motivo_pago", "mes_factura", "anio_factura",
-                         "mes_presupuesto", "mes_pago", "fecha_limite"]}
+    r = {k: "" for k in OUTPUT_FIELDS}
     r["error"] = razon
     r["debug_log"] = "\n".join(log or []) + (f"\n{razon}" if razon else "")
     return r
