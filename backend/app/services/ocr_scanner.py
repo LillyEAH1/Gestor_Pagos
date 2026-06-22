@@ -96,7 +96,19 @@ FORMATO JSON — Devuelve SOLO este JSON válido, sin markdown ni texto extra:
 
 GROQ_PROMPT_TELMEX = """Eres un asistente de extracción de datos. Analiza este recibo de Telmex y devuelve ÚNICAMENTE un JSON válido, sin texto adicional ni markdown.
 
-Usa este ejemplo como guía EXACTA de mapeo campo por campo:
+DÓNDE ESTÁ CADA CAMPO EN EL RECIBO:
+- empresa_cliente → encabezado IZQUIERDO: "Nombre o Razón Social" o "CLIENTE". NUNCA es Telmex.
+- sucursal       → ciudad o colonia de la dirección del cliente (ej: "IZTAPALAPA", "NEBRASKA").
+- no_cuenta      → encabezado DERECHO: campo explícito "Teléfono:" — 10 dígitos. NO tomes el número del código de barras.
+- factura_no     → encabezado DERECHO: campo "Factura No." o "NO. FOLIO(S) DE CFD(I)s". Solo dígitos.
+- monto          → encabezado DERECHO: "Total a Pagar" o "Saldo al Corte". Solo el número.
+- mes_factura    → encabezado DERECHO: campo "Mes de Facturación".
+- anio_factura   → año del recibo (4 dígitos).
+- banco          → siempre BBVA.
+- dv             → SECCIÓN INFERIOR (hoja de pago, cerca del código de barras): el ÚNICO dígito que sigue a las letras "DV". Ejemplo: "DV 7" → "7".
+- referencia_20_digitos → SECCIÓN INFERIOR: el número de exactamente 20 dígitos impreso DEBAJO del código de barras.
+
+Ejemplo guía (mapeo campo por campo):
 
 {
   "empresa_cliente": "ENFERMERAS UNIDAS PLUS",
@@ -111,18 +123,6 @@ Usa este ejemplo como guía EXACTA de mapeo campo por campo:
   "anio_factura": "2026",
   "referencia_20_digitos": "55568551480001349004"
 }
-
-Notas de mapeo:
-- empresa_cliente: Nombre o Razón Social del CLIENTE (nunca Telmex ni Teléfonos de México)
-- sucursal: Zona o ciudad de la dirección del cliente
-- no_cuenta: Número de teléfono de 10 dígitos del campo "Teléfono:"
-- factura_no: Solo los números del campo "Factura No."
-- monto: Número del "Total a Pagar"
-- banco: Siempre BBVA
-- dv: Solo el dígito que aparece junto al código de barras (ej: "DV 7" → "7")
-- mes_factura: Mes de facturación del recibo
-- anio_factura: Año del recibo
-- referencia_20_digitos: El número largo bajo el código de barras (20 dígitos exactos)
 """
 
 GROQ_PROMPT_FACTURA = """Eres un asistente experto en leer FACTURAS (CFDIs) mexicanas de cualquier departamento.
@@ -385,9 +385,15 @@ def _normalizar_groq(data: dict, texto_crudo: str = "") -> dict:
     if not r["no_cuenta"] and texto_crudo:
         _pu = str(data.get("proveedor") or "").upper()
         if "TELMEX" in _pu or "TELEFONOS" in _pu:
-            _m = re.search(r"\b((?:55|33|81|77)\d{8})\b", texto_crudo)
+            # Primero: campo explícito "Teléfono:" (más fiable)
+            _m = re.search(r"[Tt]el[eé]fono[:\s]+(\d[\d ]{8,11})", texto_crudo)
             if _m:
-                r["no_cuenta"] = _m.group(1)
+                r["no_cuenta"] = re.sub(r"\s+", "", _m.group(1))[:10]
+            # Segundo: número de 10 dígitos con prefijo CDMX/nacional
+            if not r["no_cuenta"]:
+                _m = re.search(r"\b((?:55|33|81|77|22|55)\d{8})\b", texto_crudo)
+                if _m:
+                    r["no_cuenta"] = _m.group(1)
         elif "TOTALPLAY" in _pu or "TOTAL PLAY" in _pu:
             _m = re.search(r"\b(02\d{8})\b", texto_crudo)
             if _m:
@@ -493,9 +499,13 @@ def _extraer_campos_texto(texto: str) -> dict:
     if m_folio:
         r["factura_no"] = m_folio.group(1).strip()
 
-    m_tel = re.search(r"((55|33|81|77)\d{8})", t)
+    m_tel = re.search(r"[Tt]el[eé]fono[:\s]+(\d[\d ]{8,11})", t)
     if m_tel:
-        r["no_cuenta"] = m_tel.group(1)
+        r["no_cuenta"] = re.sub(r"\s+", "", m_tel.group(1))[:10]
+    if not r["no_cuenta"]:
+        m_tel2 = re.search(r"\b((55|33|81|77)\d{8})\b", t)
+        if m_tel2:
+            r["no_cuenta"] = m_tel2.group(1)
     if not r["no_cuenta"]:
         m_tp = re.search(r"(02\d{8})", t)
         if m_tp:
