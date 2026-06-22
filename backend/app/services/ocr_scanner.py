@@ -154,6 +154,14 @@ FORMATO JSON — Devuelve SOLO este JSON válido, sin markdown:
 
 # ── Entradas públicas ────────────────────────────────────────────────────
 
+def _autodetectar_tipo(texto: str) -> str:
+    """Detecta el tipo de documento por palabras clave en el texto nativo del PDF."""
+    t = texto.upper()
+    if "TELEFONOS DE MEXICO" in t or "TELMEX" in t:
+        return "telmex"
+    return "recibo"
+
+
 def escanear_recibo_bytes(data: bytes, filename: str,
                           groq_api_key: str = "", tipo_doc: str = "recibo") -> dict:
     """
@@ -188,8 +196,13 @@ def escanear_recibo_bytes(data: bytes, filename: str,
         mime = "image/jpeg" if ext in (".jpg", ".jpeg") else "image/png"
         log.append(f"Imagen directa: {ext or '(sin extensión)'}")
 
+    # Auto-detectar proveedor cuando el frontend manda tipo_doc genérico
+    if tipo_doc == "recibo" and texto_nativo:
+        tipo_doc = _autodetectar_tipo(texto_nativo)
+        log.append(f"Tipo detectado automáticamente: {tipo_doc}")
+
     if groq_api_key and img_bytes:
-        log.append("Llamando a Groq Vision...")
+        log.append(f"Llamando a Groq Vision (prompt: {tipo_doc})...")
         resultado, groq_log = _groq_vision(img_bytes, mime, groq_api_key, tipo_doc,
                                            texto_crudo=texto_nativo)
         log.extend(groq_log)
