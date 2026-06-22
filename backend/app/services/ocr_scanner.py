@@ -395,16 +395,21 @@ def _normalizar_groq(data: dict, texto_crudo: str = "") -> dict:
             if _v and _v.isdigit() and 7 <= len(_v) <= 12:
                 r["no_cuenta"] = _v
                 break
+    # Fallback: extraer teléfono/cuenta del motivo_pago que devuelve el prompt genérico
+    # Ej: "SERV CTA 5556855148 ABRIL 2026" → "5556855148"
+    if not r["no_cuenta"]:
+        _mp = str(data.get("motivo_pago") or "")
+        _m = re.search(r"SERV CTA (\d{7,12})", _mp, re.IGNORECASE)
+        if _m:
+            r["no_cuenta"] = _m.group(1)
     if not r["no_cuenta"] and texto_crudo:
         _pu = str(data.get("proveedor") or "").upper()
         if "TELMEX" in _pu or "TELEFONOS" in _pu:
-            # Primero: campo explícito "Teléfono:" (más fiable)
             _m = re.search(r"[Tt]el[eé]fono[:\s]+(\d[\d ]{8,11})", texto_crudo)
             if _m:
                 r["no_cuenta"] = re.sub(r"\s+", "", _m.group(1))[:10]
-            # Segundo: número de 10 dígitos con prefijo CDMX/nacional
             if not r["no_cuenta"]:
-                _m = re.search(r"\b((?:55|33|81|77|22|55)\d{8})\b", texto_crudo)
+                _m = re.search(r"\b((?:55|33|81|77|22)\d{8})\b", texto_crudo)
                 if _m:
                     r["no_cuenta"] = _m.group(1)
         elif "TOTALPLAY" in _pu or "TOTAL PLAY" in _pu:
@@ -440,6 +445,13 @@ def _normalizar_groq(data: dict, texto_crudo: str = "") -> dict:
         r["banco"] = PREFIJO_BANCO.get(r["clabe"][:3], "")
 
     dv_crudo = str(data.get("dv", "")).strip()
+    # Fallback: extraer DV del campo observaciones que devuelve el prompt genérico
+    # Ej: "BBVA DV 7 REFERENCIA 55568551480001349004" → "7"
+    if not dv_crudo:
+        _obs_dv = str(data.get("observaciones") or "")
+        m_dv_obs = re.search(r"DV\s*(\d)", _obs_dv, re.IGNORECASE)
+        if m_dv_obs:
+            dv_crudo = m_dv_obs.group(1)
     if not dv_crudo and texto_crudo:
         m_dv = re.search(r"DV[\s\:\-]*(\d)", texto_crudo, re.IGNORECASE)
         if m_dv:
@@ -450,6 +462,13 @@ def _normalizar_groq(data: dict, texto_crudo: str = "") -> dict:
     if "TELMEX" in prov_u or "TELEFONOS" in prov_u:
         ref_cruda = str(data.get("referencia_20_digitos", ""))
         ref_solo_nums = "".join(filter(str.isdigit, ref_cruda))
+        # Fallback: extraer referencia del campo observaciones del prompt genérico
+        # Ej: "BBVA DV 7 REFERENCIA 55568551480001349004"
+        if len(ref_solo_nums) < 20:
+            _obs_ref = str(data.get("observaciones") or "")
+            m_ref_obs = re.search(r"REFERENCIA[:\s]+(\d{15,22})", _obs_ref, re.IGNORECASE)
+            if m_ref_obs:
+                ref_solo_nums = m_ref_obs.group(1)
         if len(ref_solo_nums) < 20 and texto_crudo:
             m_ref = re.search(r"\b(55\d{18})\b", texto_crudo)
             if m_ref:
@@ -479,16 +498,17 @@ def _normalizar_groq(data: dict, texto_crudo: str = "") -> dict:
     r["mes_presupuesto"] = str(data.get("mes_presupuesto") or r["mes_factura"] or "").capitalize()
     r["mes_pago"] = str(data.get("mes_pago") or r["mes_factura"] or "").capitalize()
 
-    if r["no_cuenta"] and r["mes_factura"] and r["anio_factura"]:
-        r["motivo_pago"] = f"SERV CTA {r['no_cuenta']} {r['mes_factura'].upper()} {r['anio_factura']}".strip()
-    elif r["no_cuenta"] and r["mes_factura"]:
-        r["motivo_pago"] = f"SERV CTA {r['no_cuenta']} {r['mes_factura'].upper()}".strip()
+    _mes_mp = r["mes_factura"] or r["mes_presupuesto"]
+    if r["no_cuenta"] and _mes_mp and r["anio_factura"]:
+        r["motivo_pago"] = f"SERV CTA {r['no_cuenta']} {_mes_mp.upper()} {r['anio_factura']}".strip()
+    elif r["no_cuenta"] and _mes_mp:
+        r["motivo_pago"] = f"SERV CTA {r['no_cuenta']} {_mes_mp.upper()}".strip()
     elif r["no_cuenta"]:
         r["motivo_pago"] = f"SERV CTA {r['no_cuenta']}"
     elif not r["motivo_pago"]:
         _pt = r.get("proveedor", "").upper()
         if "TELMEX" in _pt or "TELEFONOS" in _pt:
-            r["motivo_pago"] = f"SERV CTA TELMEX {r['mes_factura'].upper()} {r['anio_factura']}".strip()
+            r["motivo_pago"] = f"SERV CTA TELMEX {_mes_mp.upper()} {r['anio_factura']}".strip()
     return r
 
 
