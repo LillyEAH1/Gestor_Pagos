@@ -4,7 +4,7 @@
 > primero: resume arquitectura, qué está en producción, credenciales, cómo correr
 > y qué falta. Es la "memoria" durable del proyecto (vive en GitHub).
 >
-> Última actualización: 2026-06-18.
+> Última actualización: 2026-06-23.
 
 ---
 
@@ -111,12 +111,12 @@ render.yaml     Blueprint de Render
 | Fase | Estado |
 |------|--------|
 | 0 — Fundación (git, secretos en .env) | ✅ |
-| 1 — Supabase (esquema + datos reales del Excel: 14 prov, 35 emp/CC, 65 servicios, 175 pagos abr/may/jun 2026) | ✅ |
+| 1 — Supabase (esquema + datos reales del Excel: **397 prov**, 35 emp/CC, 65 servicios, 175 pagos abr/may/jun 2026) | ✅ |
 | 2 — Backend FastAPI (OCR, PDF, Excel, CRUD) desplegado en Render | ✅ |
 | 3 — Frontend React desplegado en Vercel, look del .exe (negro+naranja) | ✅ |
 | **Auth (login)** | ⬜ **PENDIENTE** — la API está abierta (CORS `*`). Es lo primero antes de blindar |
 | 4 — Outlook → Microsoft Graph (recordatorios) | ⬜ |
-| 5 — OCR (afinar) | ⬜ |
+| 5 — OCR (afinar) | 🔄 En progreso |
 
 ---
 
@@ -126,6 +126,10 @@ render.yaml     Blueprint de Render
   barras de sección oscuras, look del `.exe` (al usuario le importa).
 - **OCR: un prompt POR PROVEEDOR** (Telmex, Totalplay, Digital Copy… traen la info
   distinta). NO homologar la lectura. El usuario explicará el detalle del OCR.
+- **OCR output (2026-06-23):** solo devuelve 9 campos al frontend: `empresa_cliente`,
+  `sucursal`, `proveedor`, `motivo_pago`, `factura_no`, `monto`, `observaciones`,
+  `mes_presupuesto`, `mes_pago`, `anio_factura`. Los campos internos (banco, clabe,
+  no_cuenta, DV) se usan solo para construir motivo_pago y observaciones.
 - **Conciliación OCR (update/create)**: idea validada (match por dígitos de cuenta
   + mes + año) pero **CONGELADA** a petición del usuario hasta tener todo en prod.
 - **Producción primero**: el usuario priorizó deploy antes que features.
@@ -140,17 +144,34 @@ render.yaml     Blueprint de Render
 
 ---
 
-## 8. Pendientes (orden sugerido)
+## 8. Cambios recientes (2026-06-22 / 2026-06-23)
+
+- **Proveedores importados:** `backend/scripts/importar_proveedores.py` leyó la hoja
+  BASE de *SOLICITUD DE PAGO OK (SIMULTANEO) 12.xlsm* y pobló Supabase: 14 → 397
+  proveedores (nombre, beneficiario, banco, CLABE, no_cuenta, moneda).
+- **OCR output reducido a 9 campos** (ver sección 7).
+- **Nombre del PDF corregido:** `Solicitud_<NOM_CORTO>_<PROVEEDOR>_<DDMMYY>_<MES>.pdf`
+  Ej: `Solicitud_GYM_TELEFONOS DE MEXICO_220626_JUN.pdf`. El sufijo legal
+  (SAB DE CV, SAPI DE CV…) se elimina automáticamente. Lógica replicada en
+  backend (`documentos.py`) y frontend (`NuevaSolicitud.jsx`).
+- **Scripts de mantenimiento:** `backend/scripts/importar_proveedores.py` (re-ejecutable)
+  y `backend/scripts/verificar_bd.py`.
+
+---
+
+## 9. Pendientes (orden sugerido)
 
 1. **Auth / login** (Supabase Auth) — cerrar la API antes de uso real.
-2. **OCR por proveedor** — el usuario explicará por qué no funciona; afinar prompts.
-3. **Fase 4** — recordatorios vía Microsoft Graph (reemplazo de Outlook COM).
-4. Pulido: completar montos $0.00 (Digital Copy, Zona IT, Garin, COI del Excel),
+2. **empresas_cc:** poblar con las combinaciones empresa+sucursal+CC del Excel maestro.
+   Pendiente definir si empresa y sucursal son dropdowns independientes o combinados.
+3. **OCR por proveedor** — afinar prompts; el usuario indicará qué proveedores faltan.
+4. **Fase 4** — recordatorios vía Microsoft Graph (reemplazo de Outlook COM).
+5. Pulido: completar montos $0.00 (Digital Copy, Zona IT, Garin, COI del Excel),
    botón "+ Generar pago" desde Alertas, etc.
 
 ---
 
-## 9. Cambio de computadora — checklist para no perder nada
+## 10. Cambio de computadora — checklist para no perder nada
 
 - [x] **Código**: ya está todo en GitHub → en la PC nueva, `git clone` y listo.
 - [ ] **`.env`** (secretos): cópialo aparte (USB / gestor de contraseñas). NO está
