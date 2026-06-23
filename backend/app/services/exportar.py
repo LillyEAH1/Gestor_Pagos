@@ -1,43 +1,30 @@
 """
 exportar.py — generación de documentos.
 
-Solicitud de Pago: llena el template Excel real con openpyxl,
-convierte a PDF con LibreOffice headless (Render/Linux) o LibreOffice
-para Windows en local.
+Solicitud de Pago: overlay de texto sobre solicitud_bg.pdf
+(formulario en blanco exportado desde el Excel real con Excel/win32com)
+usando PyMuPDF con coordenadas calibradas en cell_coords.json.
+Sin dependencia de LibreOffice en Render.
 """
 from __future__ import annotations
 import io
-import os
-import shutil
-import subprocess
-import tempfile
+import json
 from pathlib import Path
 from datetime import date
 
-import openpyxl
+import fitz  # PyMuPDF
 
-TEMPLATE = Path(__file__).resolve().parents[2] / "assets" / "solicitud_template.xlsx"
+ASSETS = Path(__file__).resolve().parents[2] / "assets"
+BG_PDF = ASSETS / "solicitud_bg.pdf"
+CELL_COORDS = ASSETS / "cell_coords.json"
 
 
-def _libreoffice_bin() -> str:
-    candidates = [
-        "libreoffice",
-        "soffice",
-        r"C:\Program Files\LibreOffice\program\soffice.exe",
-        r"C:\Program Files (x86)\LibreOffice\program\soffice.exe",
-    ]
-    for c in candidates:
-        if shutil.which(c) or (os.path.isabs(c) and os.path.exists(c)):
-            return c
-    raise RuntimeError(
-        "LibreOffice no encontrado. "
-        "En Render: instalar con apt-get install libreoffice-calc. "
-        "En Windows: instalar LibreOffice desde libreoffice.org"
-    )
+def _load_coords() -> dict:
+    return json.loads(CELL_COORDS.read_text(encoding="utf-8"))
 
 
 def exportar_solicitud_pdf(datos: dict) -> bytes:
-    """Llena el template .xlsx con los datos y devuelve el PDF como bytes."""
+    """Inserta los datos sobre el PDF de fondo del formulario real."""
 
     def g(k: str) -> str:
         return (datos.get(k) or "").strip()
@@ -47,68 +34,49 @@ def exportar_solicitud_pdf(datos: dict) -> bytes:
     except Exception:
         monto = 0.0
 
-    wb = openpyxl.load_workbook(str(TEMPLATE))
-    ws = wb["Solicitud de pago"]
+    fields = {
+        "I10": g("empresa"),
+        "F14": g("sucursal"),
+        "T14": g("fecha_proceso") or date.today().strftime("%d/%m/%Y"),
+        "F16": g("centro_costos"),
+        "T16": g("direccion"),
+        "G19": g("proveedor_nombre"),
+        "G21": g("motivo_pago"),
+        "G26": g("folio_cfdi"),
+        "P26": g("notas_credito"),
+        "G33": g("importe_letra"),
+        "S33": f"$ {monto:,.2f}" if monto else "",
+        "C37": g("banco"),
+        "G37": g("clabe"),
+        "S37": g("no_cuenta"),
+        "G39": g("observaciones"),
+        "G49": g("mes_presupuesto"),
+        "S49": g("mes_pago"),
+        "G52": g("centro_costos"),
+        "B70": g("analista_nombre"),
+        "G70": g("gerente_nombre"),
+        "C83": g("visto_bno"),
+        "G83": g("depto_finanzas"),
+        "O83": g("dir_financiera"),
+        "T83": g("dir_general"),
+    }
 
-    # ── Datos principales ─────────────────────────────────────────────
-    ws["I10"] = g("empresa")
-    ws["F14"] = g("sucursal")
-    ws["T14"] = g("fecha_proceso") or date.today().strftime("%d/%m/%Y")
-    ws["F16"] = g("centro_costos")
-    ws["T16"] = g("direccion")
-    ws["G19"] = g("proveedor_nombre")
-    ws["G21"] = g("motivo_pago")
-    ws["G26"] = g("folio_cfdi")
-    ws["Q26"] = g("notas_credito")
+    coords = _load_coords()
+    doc = fitz.open(str(BG_PDF))
+    page = doc[0]
 
-    # Importe: letra (G33) y número (S33 — mantiene formato moneda del template)
-    ws["G33"] = g("importe_letra")
-    ws["S33"] = monto if monto else None
+    for cell_id, text in fields.items():
+        if not text or cell_id not in coords:
+            continue
+        pos = coords[cell_id]
+        # Tamaño real de fuente derivado de la altura del bbox de calibración
+        h = pos["y1"] - pos["y0"]
+        sz = max(5.0, round(h / 0.91, 1))
+        # y1 del marcador (sin descendentes) ≈ línea base del texto
+        point = fitz.Point(pos["x0"], pos["y1"])
+        page.insert_text(point, text, fontname="helv", fontsize=sz, color=(0, 0, 0))
 
-    # Banco / CLABE / No. de cuenta
-    ws["C37"] = g("banco")
-    ws["G37"] = g("clabe")
-    ws["S37"] = g("no_cuenta")
-
-    ws["G39"] = g("observaciones")
-
-    # Exclusivo finanzas
-    ws["G49"] = g("mes_presupuesto")
-    ws["S49"] = g("mes_pago")
-    ws["G52"] = g("centro_costos")     # CC Finanzas = mismo CC
-
-    # Firmas
-    ws["B70"] = g("analista_nombre")
-    ws["G70"] = g("gerente_nombre")
-    ws["C83"] = g("visto_bno")
-    ws["G83"] = g("depto_finanzas")
-    ws["O83"] = g("dir_financiera")
-    ws["T83"] = g("dir_general")
-
-    # ── Guardar xlsx temporal ─────────────────────────────────────────
-    tmp_xlsx = tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False).name
-    wb.save(tmp_xlsx)
-
-    # ── Convertir a PDF con LibreOffice ───────────────────────────────
-    tmp_dir = tempfile.mkdtemp()
-    try:
-        subprocess.run(
-            [_libreoffice_bin(), "--headless", "--norestore",
-             "--convert-to", "pdf", "--outdir", tmp_dir, tmp_xlsx],
-            check=True,
-            capture_output=True,
-            timeout=90,
-        )
-        pdf_name = os.path.splitext(os.path.basename(tmp_xlsx))[0] + ".pdf"
-        pdf_path = os.path.join(tmp_dir, pdf_name)
-        with open(pdf_path, "rb") as f:
-            return f.read()
-    finally:
-        try:
-            os.unlink(tmp_xlsx)
-        except OSError:
-            pass
-        shutil.rmtree(tmp_dir, ignore_errors=True)
+    return doc.tobytes()
 
 
 def exportar_estado_cuenta_xlsx(estado: dict) -> bytes:

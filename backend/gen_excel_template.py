@@ -41,7 +41,7 @@ DATA_CELLS = [
     "G19",  # beneficiario (proveedor)
     "G21",  # motivo de pago
     "G26",  # folio CFDI
-    "Q26",  # nota de crédito
+    "P26",  # nota de crédito (top-left de P26:V26)
     "G33",  # importe en letra
     "S33",  # importe en número
     "C37",  # banco
