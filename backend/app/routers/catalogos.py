@@ -13,8 +13,10 @@ def _check_db():
 
 
 @router.get("/proveedores")
-async def proveedores():
+async def proveedores(nombres_only: bool = False):
     _check_db()
+    if nombres_only:
+        return db.list_nombres_proveedores()
     return db.list_proveedores()
 
 

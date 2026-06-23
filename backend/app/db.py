@@ -159,6 +159,12 @@ def list_proveedores() -> list[dict]:
         return c.execute("SELECT * FROM proveedores ORDER BY nombre").fetchall()
 
 
+def list_nombres_proveedores() -> list[str]:
+    with get_conn() as c:
+        rows = c.execute("SELECT nombre FROM proveedores ORDER BY nombre").fetchall()
+        return [r["nombre"] for r in rows]
+
+
 def list_bancos() -> list[dict]:
     with get_conn() as c:
         return c.execute("SELECT * FROM bancos ORDER BY nombre").fetchall()

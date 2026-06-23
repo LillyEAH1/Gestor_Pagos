@@ -34,6 +34,17 @@ export default function App() {
     api.health().then(setHealth).catch(() => setHealth({ ok: false }));
   }, []);
 
+  if (health === null) {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center",
+                    justifyContent: "center", height: "100vh", gap: 16, background: "#111" }}>
+        <img src="/selectshop_logo.png" alt="Select Shop" style={{ width: 120, opacity: 0.9 }} />
+        <span className="spinner" style={{ width: 28, height: 28, borderWidth: 3 }} />
+        <p style={{ color: "#9ca3af", margin: 0, fontSize: 14 }}>Conectando con el servidor…</p>
+      </div>
+    );
+  }
+
   return (
     <div className="app">
       <aside className="sidebar">

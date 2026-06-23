@@ -160,7 +160,7 @@ export default function NuevaSolicitud({ health }) {
   const empresasU = [...new Set(cat.empresas.map((e) => e.empresa).filter(Boolean))];
   const sucursalesU = [...new Set(cat.empresas.map((e) => e.sucursal).filter(Boolean))];
   const bancosU = cat.bancos.map((b) => b.nombre);
-  const provsU = cat.proveedores.map((p) => p.nombre);
+  const provsU = cat.proveedores;
 
   return (
     <>

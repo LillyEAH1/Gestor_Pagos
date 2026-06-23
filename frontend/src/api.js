@@ -67,7 +67,7 @@ export const api = {
   eliminarPago: (id) => fetch(`${BASE}/api/pagos/${id}`, { method: "DELETE" }).then(handle),
 
   // ── Catálogos ──────────────────────────────────────
-  proveedores: () => fetch(`${BASE}/api/catalogos/proveedores`).then(handle),
+  proveedores: () => fetch(`${BASE}/api/catalogos/proveedores?nombres_only=true`).then(handle),
   bancos: () => fetch(`${BASE}/api/catalogos/bancos`).then(handle),
   empresas: () => fetch(`${BASE}/api/catalogos/empresas`).then(handle),
 };
