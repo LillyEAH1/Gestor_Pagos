@@ -1,7 +1,7 @@
 """
 exportar.py — generación de documentos.
 
-Solicitud de Pago: overlay de texto sobre solicitud_bg.pdf
+Solicitud de Pago: overlay de texto e imagen de logo sobre solicitud_bg.pdf
 (formulario en blanco exportado desde el Excel real con Excel/win32com)
 usando PyMuPDF con coordenadas calibradas en cell_coords.json.
 Sin dependencia de LibreOffice en Render.
@@ -17,10 +17,37 @@ import fitz  # PyMuPDF
 ASSETS = Path(__file__).resolve().parents[2] / "assets"
 BG_PDF = ASSETS / "solicitud_bg.pdf"
 CELL_COORDS = ASSETS / "cell_coords.json"
+_LOGO_MAP = ASSETS / "logos" / "logo_map.json"
+
+# Área del logo en el PDF (celda C8:F13 del formulario real)
+_LOGO_RECT = fitz.Rect(38.4, 32.2, 113.4, 71.6)
+
+# Celdas que deben renderizarse en bold
+_BOLD_CELLS = {"I10", "G19", "S33", "C37", "G37", "S37"}
+
+# I10 (empresa): centrado bajo "SOLICITUD DE PAGO GENERAL" (center_x=300.2pt)
+_EMPRESA_CENTER_X = 300.2
 
 
 def _load_coords() -> dict:
     return json.loads(CELL_COORDS.read_text(encoding="utf-8"))
+
+
+def _get_logo_path(empresa: str) -> str | None:
+    """Devuelve la ruta al logo PNG de la empresa, o None si no existe."""
+    if not empresa or not _LOGO_MAP.exists():
+        return None
+    try:
+        logo_map = json.loads(_LOGO_MAP.read_text(encoding="utf-8"))
+        eu = empresa.upper().strip()
+        for key, fname in logo_map.items():
+            if key.upper() in eu or eu in key.upper():
+                p = ASSETS / "logos" / fname
+                if p.exists():
+                    return str(p)
+    except Exception:
+        pass
+    return None
 
 
 def exportar_solicitud_pdf(datos: dict) -> bytes:
@@ -65,16 +92,20 @@ def exportar_solicitud_pdf(datos: dict) -> bytes:
     doc = fitz.open(str(BG_PDF))
     page = doc[0]
 
+    # Insertar logo de empresa
+    logo_path = _get_logo_path(g("empresa"))
+    if logo_path:
+        page.insert_image(_LOGO_RECT, filename=logo_path, keep_proportion=True)
+
     for cell_id, text in fields.items():
         if not text or cell_id not in coords:
             continue
         pos = coords[cell_id]
-        # Tamaño real de fuente derivado de la altura del bbox de calibración
         h = pos["y1"] - pos["y0"]
         sz = max(5.0, round(h / 0.91, 1))
-        # y1 del marcador (sin descendentes) ≈ línea base del texto
+        font = "hebo" if cell_id in _BOLD_CELLS else "helv"
         point = fitz.Point(pos["x0"], pos["y1"])
-        page.insert_text(point, text, fontname="helv", fontsize=sz, color=(0, 0, 0))
+        page.insert_text(point, text, fontname=font, fontsize=sz, color=(0, 0, 0))
 
     return doc.tobytes()
 
