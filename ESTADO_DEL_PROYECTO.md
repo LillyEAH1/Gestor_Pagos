@@ -4,7 +4,7 @@
 > primero: resume arquitectura, qué está en producción, credenciales, cómo correr
 > y qué falta. Es la "memoria" durable del proyecto (vive en GitHub).
 >
-> Última actualización: 2026-06-23.
+> Última actualización: 2026-06-23 (tarde).
 
 ---
 
@@ -150,12 +150,25 @@ render.yaml     Blueprint de Render
   BASE de *SOLICITUD DE PAGO OK (SIMULTANEO) 12.xlsm* y pobló Supabase: 14 → 397
   proveedores (nombre, beneficiario, banco, CLABE, no_cuenta, moneda).
 - **OCR output reducido a 9 campos** (ver sección 7).
+- **OCR performance:** PDF→imagen bajó de PNG 1800px (~8 MB) a JPEG 1024px (~300 KB).
+  El endpoint es ahora async (`asyncio.to_thread`) para no bloquear el event loop.
+  Tiempo de escaneo: de ~10 min → ~5-15 segundos.
 - **Nombre del PDF corregido:** `Solicitud_<NOM_CORTO>_<PROVEEDOR>_<DDMMYY>_<MES>.pdf`
-  Ej: `Solicitud_GYM_TELEFONOS DE MEXICO_220626_JUN.pdf`. El sufijo legal
-  (SAB DE CV, SAPI DE CV…) se elimina automáticamente. Lógica replicada en
-  backend (`documentos.py`) y frontend (`NuevaSolicitud.jsx`).
+  Ej: `Solicitud_GYM_TELEFONOS DE MEXICO_220626_JUN.pdf`. Sufijo legal eliminado.
+  Lógica replicada en backend (`documentos.py`) y frontend (`NuevaSolicitud.jsx`).
+- **Carga inicial optimizada:**
+  - `/health` calienta el pool de Supabase (`SELECT 1`) para que los catálogos
+    subsiguientes no sufran latencia de inicialización del pool.
+  - `/api/catalogos/proveedores?nombres_only=true` devuelve solo strings de nombres
+    en vez de 397 objetos completos (~20x menos payload).
+  - Frontend muestra spinner "Conectando con el servidor…" durante el cold start de
+    Render (~50s en plan free) en vez de parecer roto.
 - **Scripts de mantenimiento:** `backend/scripts/importar_proveedores.py` (re-ejecutable)
   y `backend/scripts/verificar_bd.py`.
+
+> **Cold start de Render (plan free):** el servidor duerme tras ~15 min sin tráfico
+> real. UptimeRobot lo mantiene vivo con pings cada 5 min a `/health`. Cada redeploy
+> reinicia el contador — esperar ~50s la primera vez después de un deploy.
 
 ---
 
@@ -165,8 +178,10 @@ render.yaml     Blueprint de Render
 2. **empresas_cc:** poblar con las combinaciones empresa+sucursal+CC del Excel maestro.
    Pendiente definir si empresa y sucursal son dropdowns independientes o combinados.
 3. **OCR por proveedor** — afinar prompts; el usuario indicará qué proveedores faltan.
-4. **Fase 4** — recordatorios vía Microsoft Graph (reemplazo de Outlook COM).
-5. Pulido: completar montos $0.00 (Digital Copy, Zona IT, Garin, COI del Excel),
+4. **Campos restantes del formulario** — banco, clabe, no_cuenta, centro_costos,
+   dirección: el usuario definirá cómo se llenarán (catálogo, OCR, manual).
+5. **Fase 4** — recordatorios vía Microsoft Graph (reemplazo de Outlook COM).
+6. Pulido: completar montos $0.00 (Digital Copy, Zona IT, Garin, COI del Excel),
    botón "+ Generar pago" desde Alertas, etc.
 
 ---
