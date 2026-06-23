@@ -43,7 +43,7 @@ function nombrePdf(datos) {
 
   const fecha = datos.fecha_proceso || new Date().toLocaleDateString("es-MX");
   let fechaStr = "";
-  try { const [d, m, y] = fecha.split("/"); fechaStr = `${d}${m}${y.slice(-2)}`; }
+  try { const [d, m, y] = fecha.split("/"); fechaStr = `${d.padStart(2,"0")}${m.padStart(2,"0")}${y.slice(-2)}`; }
   catch { fechaStr = fecha.replace(/\//g, ""); }
 
   const mesRaw = (datos.mes_pago || datos.mes_presupuesto || "").toLowerCase();
@@ -110,7 +110,11 @@ export default function NuevaSolicitud({ health }) {
 
   function datosPDF() {
     saveFirmantes(firm);
-    return { ...form, ...firm, fecha_proceso: new Date().toLocaleDateString("es-MX") };
+    const hoy = new Date();
+    const d = String(hoy.getDate()).padStart(2, "0");
+    const m = String(hoy.getMonth() + 1).padStart(2, "0");
+    const y = hoy.getFullYear();
+    return { ...form, ...firm, fecha_proceso: `${d}/${m}/${y}` };
   }
 
   async function vistaPrevia() {

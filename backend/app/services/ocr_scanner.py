@@ -351,6 +351,7 @@ OUTPUT_FIELDS = [
     "empresa_cliente", "sucursal", "proveedor",
     "motivo_pago", "factura_no", "monto",
     "observaciones", "mes_presupuesto", "mes_pago", "anio_factura",
+    "banco", "no_cuenta", "clabe",
 ]
 
 

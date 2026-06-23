@@ -66,7 +66,7 @@ def _nombre_pdf(datos: dict) -> str:
     fecha_raw = datos.get("fecha_proceso") or date.today().strftime("%d/%m/%Y")
     try:
         d, m, y = fecha_raw.split("/")
-        fecha_str = f"{d}{m}{y[2:]}"   # "22/06/2026" → "220626"
+        fecha_str = f"{d.zfill(2)}{m.zfill(2)}{y[2:]}"   # "22/6/2026" → "220626"
     except Exception:
         fecha_str = fecha_raw.replace("/", "")
 
