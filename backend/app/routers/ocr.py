@@ -1,4 +1,5 @@
 """Endpoints de OCR (Groq Vision)."""
+import asyncio
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException
 
 from app.services import ocr_scanner
@@ -21,8 +22,9 @@ async def escanear(
         raise HTTPException(status_code=400, detail="Archivo vacío")
     if len(data) > 15 * 1024 * 1024:
         raise HTTPException(status_code=413, detail="Archivo demasiado grande (máx 15 MB)")
-    resultado = ocr_scanner.escanear_recibo_bytes(
-        data, archivo.filename or "archivo", tipo_doc=tipo_doc
+    resultado = await asyncio.to_thread(
+        ocr_scanner.escanear_recibo_bytes,
+        data, archivo.filename or "archivo", tipo_doc,
     )
     return resultado
 

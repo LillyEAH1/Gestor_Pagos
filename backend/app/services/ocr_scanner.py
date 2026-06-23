@@ -182,11 +182,11 @@ def escanear_recibo_bytes(data: bytes, filename: str,
     if ext == ".pdf":
         texto_nativo = _pdf_texto_nativo(data)
         log.append(f"Texto nativo extraído: {len(texto_nativo.strip())} chars")
-        img_bytes = _pdf_a_png(data)
+        img_bytes, mime = _pdf_a_imagen(data)
         if img_bytes:
-            log.append(f"PDF->PNG OK ({len(img_bytes) // 1024} KB)")
+            log.append(f"PDF->JPEG OK ({len(img_bytes) // 1024} KB)")
         else:
-            log.append("PDF->PNG falló")
+            log.append("PDF->JPEG falló")
             if len(texto_nativo.strip()) > 50:
                 r = _extraer_campos_texto(texto_nativo)
                 r["debug_log"] = "\n".join(log) + "\nFallback: extracción por texto"
@@ -267,20 +267,20 @@ def _pdf_texto_nativo(data: bytes) -> str:
         return ""
 
 
-def _pdf_a_png(data: bytes, dpi_width: int = 1800) -> bytes:
-    """Rasteriza la primera página del PDF a PNG usando PyMuPDF."""
+def _pdf_a_imagen(data: bytes, ancho_px: int = 1024) -> tuple[bytes, str]:
+    """Rasteriza la primera página del PDF a JPEG usando PyMuPDF.
+    Devuelve (bytes, mime). JPEG reduce el payload ~20x vs PNG a 1800px."""
     try:
         import fitz  # PyMuPDF
         doc = fitz.open(stream=data, filetype="pdf")
         page = doc.load_page(0)
-        # Escala para que el ancho quede ~dpi_width px
-        zoom = dpi_width / page.rect.width if page.rect.width else 2.5
+        zoom = ancho_px / page.rect.width if page.rect.width else 1.5
         pix = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom))
-        out = pix.tobytes("png")
+        out = pix.tobytes("jpeg", jpg_quality=88)
         doc.close()
-        return out
+        return out, "image/jpeg"
     except Exception:
-        return b""
+        return b"", "image/jpeg"
 
 
 # ── Groq Vision ──────────────────────────────────────────────────────────
