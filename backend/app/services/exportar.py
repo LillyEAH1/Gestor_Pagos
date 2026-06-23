@@ -1,11 +1,9 @@
 """
-exportar.py (backend) — portado de v60/exportar.py.
+exportar.py (backend) — generación de PDF de Solicitud de Pago.
 
-Genera el PDF de Solicitud de Pago (plantilla de fondo + drawString con
-coordenadas fijas) y el Excel de Estado de Cuenta. Devuelve BYTES (no escribe
-a disco), para que los endpoints los streameen al navegador.
-
-Las coordenadas y la lógica de firmas se conservan 1:1 del original.
+Usa como fondo el JPG generado desde formato.xlsx (fit-to-1-page).
+Coordenadas x/y calibradas contra el PDF relleno del Excel exportado.
+RL y = 792 - y_top  (PyMuPDF da y desde arriba, ReportLab desde abajo)
 """
 from __future__ import annotations
 import io
@@ -19,7 +17,6 @@ from reportlab.lib import colors
 
 PW, PH = letter          # 612 × 792 pts
 NEGRO = colors.black
-MUTED = colors.HexColor("#333333")
 
 _ASSETS = Path(__file__).resolve().parents[2] / "assets" / "logos"
 
@@ -54,43 +51,45 @@ def exportar_solicitud_pdf(datos: dict) -> bytes:
     def g(k: str) -> str:
         return (datos.get(k) or "").strip()
 
-    empresa = g("empresa")
-    sucursal = g("sucursal")
-    cc = g("centro_costos")
+    empresa   = g("empresa")
+    sucursal  = g("sucursal")
+    cc        = g("centro_costos")
     direccion = g("direccion")
     proveedor = g("proveedor_nombre")
-    motivo = g("motivo_pago")
-    folio = g("folio_cfdi")
+    motivo    = g("motivo_pago")
+    folio     = g("folio_cfdi")
     nota_cred = g("notas_credito")
     try:
         monto = float(str(datos.get("monto_total") or 0).replace(",", ""))
     except Exception:
         monto = 0.0
     monto_str = f"$ {monto:,.2f}" if monto else ""
-    letra = g("importe_letra")
-    banco = g("banco")
-    clabe = g("clabe")
-    no_cta = g("no_cuenta")
-    obs = g("observaciones")
-    mes_pres = g("mes_presupuesto")
+    letra     = g("importe_letra")
+    banco     = g("banco")
+    clabe     = g("clabe")
+    no_cta    = g("no_cuenta")
+    obs       = g("observaciones")
+    mes_pres  = g("mes_presupuesto")
     mes_pago_ = g("mes_pago")
-    fec_sol = g("fecha_proceso") or date.today().strftime("%d/%m/%Y")
-    analista = g("analista_nombre")
-    gerente = g("gerente_nombre")
+    fec_sol   = g("fecha_proceso") or date.today().strftime("%d/%m/%Y")
+    analista  = g("analista_nombre")
+    gerente   = g("gerente_nombre")
     visto_bno = g("visto_bno")
     depto_fin = g("depto_finanzas")
-    dir_fin = g("dir_financiera")
-    dir_gral = g("dir_general")
+    dir_fin   = g("dir_financiera")
+    dir_gral  = g("dir_general")
 
     logo_path = _get_logo(empresa)
 
     buf = io.BytesIO()
-    cv = canvas.Canvas(buf, pagesize=letter)
+    cv  = canvas.Canvas(buf, pagesize=letter)
 
+    # ── Fondo (plantilla Excel → JPG 1275×1650 px) ──────────────────
     plantilla = _plantilla()
     if plantilla:
         cv.drawImage(plantilla, 0, 0, width=PW, height=PH, preserveAspectRatio=False)
 
+    # ── Logo empresa (área B1:E6 del Excel, top-left) ────────────────
     if logo_path:
         try:
             cv.drawImage(logo_path, 22, PH - 88, width=95, height=52,
@@ -102,13 +101,13 @@ def exportar_solicitud_pdf(datos: dict) -> bytes:
         cv.setFillColor(NEGRO)
         cv.drawString(22, PH - 62, empresa)
 
-    def ds(txt, x, y, sz=8.5, bold=False, color=NEGRO):
+    # ── Helpers ──────────────────────────────────────────────────────
+    def ds(txt, x, y, sz=8.5, bold=False):
         if not txt:
             return
-        cv.setFillColor(color)
         cv.setFont("Helvetica-Bold" if bold else "Helvetica", sz)
-        cv.drawString(x, y, str(txt))
         cv.setFillColor(NEGRO)
+        cv.drawString(x, y, str(txt))
 
     def dsr(txt, x, y, sz=8.5, bold=False):
         if not txt:
@@ -117,58 +116,68 @@ def exportar_solicitud_pdf(datos: dict) -> bytes:
         cv.setFillColor(NEGRO)
         cv.drawRightString(x, y, str(txt))
 
-    def dsc(txt, x, y, sz=7.0, bold=False, color=NEGRO):
+    def dsc(txt, x, y, sz=7.0, bold=False):
         if not txt:
             return
-        cv.setFillColor(color)
         cv.setFont("Helvetica-Bold" if bold else "Helvetica", sz)
-        cv.drawCentredString(x, y, str(txt))
         cv.setFillColor(NEGRO)
+        cv.drawCentredString(x, y, str(txt))
 
-    # ── SUCURSAL | Fecha de solicitud ────────────────────
-    ds(sucursal, 180.5, 673.0, sz=8.5, bold=True)
-    ds(fec_sol, 494.4, 673.0, sz=8.5)
-    # ── CENTRO DE COSTOS | DIRECCIÓN ─────────────────────
-    ds(cc, 137.8, 648.0, sz=8.0)
-    ds(direccion, 456.0, 648.0, sz=8.0, bold=True)
-    # ── BENEFICIARIO ─────────────────────────────────────
-    ds(proveedor, 137.8, 613.0, sz=8.5, bold=True)
-    # ── MOTIVO DE PAGO ───────────────────────────────────
-    ds(motivo, 137.8, 591.4, sz=8.5)
-    # ── DATOS DE CFDI — Folio | Nota de crédito ──────────
-    dsc(folio, 340.0, 529.0, sz=8.5, bold=True)
-    ds(nota_cred, 468.0, 529.0, sz=8.0)
-    # ── DATOS DE PAGO — Importe ──────────────────────────
-    ds(letra, 137.8, 461.8, sz=7.5)
-    dsr(monto_str, 597.6, 461.8, sz=11.0, bold=True)
-    # ── Banco | CLABE | No. de Cuenta ────────────────────
-    ds(banco, 81.6, 435.8, sz=8.5, bold=True)
-    ds(clabe, 235.2, 435.8, sz=8.5, bold=True)
-    ds(no_cta, 504.0, 435.8, sz=8.5, bold=True)
-    # ── Observaciones ────────────────────────────────────
-    ds(obs, 137.8, 409.0, sz=8.0, bold=True)
-    # ── EXCLUSIVO FINANZAS ───────────────────────────────
-    ds(mes_pres, 218.4, 332.2, sz=8.5, bold=True)
-    ds(mes_pago_, 429.6, 332.2, sz=8.5, bold=True)
-    ds(cc, 137.8, 297.6, sz=8.0)
+    # ── DATOS PRINCIPALES ────────────────────────────────────────────
+    # RL y = 792 - y_top_excel - ascender(sz)
+    # ascender Helvetica: 8.5pt→9, 8pt→9, 7.5pt→8, 11pt→12, 6.5pt→7
 
-    # ── FIRMAS ───────────────────────────────────────────
-    XC1, XC2, XC3, XC4 = 76.5, 229.5, 382.5, 535.5
-    Y1N, Y1D = 233.8, 226.6
-    dsc(analista, XC1, Y1N, sz=6.5, bold=True)
-    dsc(gerente, XC2, Y1N, sz=6.5, bold=True)
-    dsc("ANALISTA DE SISTEMAS", XC1, Y1D, sz=5.5, color=MUTED)
-    dsc("GERENTE DE SISTEMAS", XC2, Y1D, sz=5.5, color=MUTED)
+    # Sucursal / Fecha de solicitud  (row 7, y_excel≈105 → RL y=678)
+    ds(sucursal, 143.0, 678.0, sz=8.5, bold=True)
+    ds(fec_sol,  481.0, 679.0, sz=8.5)
 
-    Y2N, Y2D = 125.8, 118.6
-    dsc(visto_bno, XC1, Y2N, sz=6.5, bold=True)
-    dsc(depto_fin, XC2, Y2N, sz=6.5, bold=True)
-    dsc(dir_fin, XC3, Y2N, sz=6.5, bold=True)
-    dsc(dir_gral, XC4, Y2N, sz=6.5, bold=True)
-    dsc("DEPARTAMENTO DE FINANZAS", XC1, Y2D, sz=5.5, color=MUTED)
-    dsc("DEPARTAMENTO DE FINANZAS", XC2, Y2D, sz=5.5, color=MUTED)
-    dsc("DIRECCIÓN FINANCIERA", XC3, Y2D, sz=5.5, color=MUTED)
-    dsc("DIRECCIÓN GENERAL", XC4, Y2D, sz=5.5, color=MUTED)
+    # Centro de Costos / Dirección  (row 9, y_excel≈120 → RL y=663)
+    ds(cc,        145.0, 663.0, sz=8.0)
+    ds(direccion, 464.0, 663.0, sz=8.0, bold=True)
+
+    # Beneficiario  (row 12, y_excel≈140 → RL y=643)
+    ds(proveedor, 166.0, 643.0, sz=8.5, bold=True)
+
+    # Motivo de pago  (row 14, y_excel≈153 → RL y=630)
+    ds(motivo, 166.0, 630.0, sz=8.5)
+
+    # Folio CFDI / Nota de crédito  (row 19, y_excel≈194 → RL y=589)
+    ds(folio,     240.0, 589.0, sz=8.5, bold=True)
+    ds(nota_cred, 440.0, 589.0, sz=8.0)
+
+    # Importe en letra / Monto  (row 25, y_excel≈241; sz distintas → RL y distintos)
+    ds(letra,      236.0, 543.0, sz=7.5)           # 792-241-8=543
+    dsr(monto_str, 562.0, 539.0, sz=11.0, bold=True)  # 792-241-12=539
+
+    # Banco / CLABE / No. de Cuenta  (row 30, y_excel≈275 → RL y=508)
+    ds(banco,  110.0, 508.0, sz=8.5, bold=True)
+    ds(clabe,  270.0, 508.0, sz=8.5, bold=True)
+    ds(no_cta, 466.0, 508.0, sz=8.5, bold=True)
+
+    # Observaciones  (row 32, y_excel≈298 → RL y=485)
+    ds(obs, 166.0, 485.0, sz=8.0, bold=True)
+
+    # ── EXCLUSIVO FINANZAS ───────────────────────────────────────────
+    # Mes presupuesto / Mes pago  (row 42, y_excel≈378 → RL y=405)
+    ds(mes_pres,  296.0, 405.0, sz=8.5, bold=True)
+    ds(mes_pago_, 477.0, 405.0, sz=8.5, bold=True)
+
+    # CC Finanzas  (row 45, y_excel≈403 → RL y=380)
+    ds(cc, 278.0, 380.0, sz=8.0)
+
+    # ── FIRMAS ───────────────────────────────────────────────────────
+    # Roles/etiquetas vienen del background (Excel); aquí solo los nombres.
+    XC1, XC2, XC3, XC4 = 117.0, 220.0, 403.0, 505.0
+
+    # Fila 1 — Analista / Gerente  (row 63, y_excel≈535 → RL y=250)
+    dsc(analista, XC1, 250.0, sz=6.0, bold=True)
+    dsc(gerente,  XC2, 250.0, sz=6.0, bold=True)
+
+    # Fila 2 — Vo.Bo. / Depto.Fin / Dir.Fin / Dir.Gral  (row 76, y_excel≈632 → RL y=153)
+    dsc(visto_bno, XC1, 153.0, sz=6.0, bold=True)
+    dsc(depto_fin, XC2, 153.0, sz=6.0, bold=True)
+    dsc(dir_fin,   XC3, 153.0, sz=6.0, bold=True)
+    dsc(dir_gral,  XC4, 153.0, sz=6.0, bold=True)
 
     cv.save()
     return buf.getvalue()
