@@ -24,7 +24,7 @@ async def escanear(
         raise HTTPException(status_code=413, detail="Archivo demasiado grande (máx 15 MB)")
     resultado = await asyncio.to_thread(
         ocr_scanner.escanear_recibo_bytes,
-        data, archivo.filename or "archivo", tipo_doc,
+        data, archivo.filename or "archivo", tipo_doc=tipo_doc,
     )
     return resultado
 
