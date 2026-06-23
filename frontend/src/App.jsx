@@ -40,7 +40,7 @@ export default function App() {
                     justifyContent: "center", height: "100vh", gap: 16, background: "#111" }}>
         <img src="/selectshop_logo.png" alt="Select Shop" style={{ width: 120, opacity: 0.9 }} />
         <span className="spinner" style={{ width: 28, height: 28, borderWidth: 3 }} />
-        <p style={{ color: "#9ca3af", margin: 0, fontSize: 14 }}>Conectando con el servidor…</p>
+        <p style={{ color: "#9ca3af", margin: 0, fontSize: 14 }}>Conectando con el servidor… (puede tardar ~30s)</p>
       </div>
     );
   }

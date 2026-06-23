@@ -39,16 +39,8 @@ async def root():
 
 @app.get("/health")
 async def health():
-    db_ok = bool(settings.database_url)
-    if db_ok:
-        try:
-            from app import db as _db
-            with _db.get_conn() as c:
-                c.execute("SELECT 1")
-        except Exception:
-            db_ok = False
     return {
         "ok": True,
         "groq_configurada": bool(settings.groq_api_key),
-        "db_configurada": db_ok,
+        "db_configurada": bool(settings.database_url),
     }

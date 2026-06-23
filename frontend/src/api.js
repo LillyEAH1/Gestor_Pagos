@@ -21,7 +21,14 @@ export const api = {
   base: BASE,
 
   // ── Salud ──────────────────────────────────────────
-  health: () => fetch(`${BASE}/health`).then(handle),
+  health: (timeoutMs = 12000) => {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), timeoutMs);
+    return fetch(`${BASE}/health`, { signal: ctrl.signal })
+      .then(handle)
+      .catch(() => ({ ok: false, groq_configurada: false, db_configurada: false }))
+      .finally(() => clearTimeout(t));
+  },
 
   // ── OCR ────────────────────────────────────────────
   escanear: (file, tipoDoc = "recibo") => {
