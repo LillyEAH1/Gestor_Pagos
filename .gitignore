@@ -34,6 +34,10 @@ dist-frontend/
 # ── Render / build artifacts ─────────────────────────────
 .render/
 
+# ── Archivos de prueba locales ────────────────────────────
+backend/assets/*_test_filled.xlsx
+backend/assets/*_test_*.xlsx
+
 # ── Editor / OS ──────────────────────────────────────────
 .vscode/
 .idea/
